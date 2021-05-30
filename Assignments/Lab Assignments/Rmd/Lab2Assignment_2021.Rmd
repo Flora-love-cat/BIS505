@@ -1,0 +1,292 @@
+---
+title: "Lab Assignment 2 BIS 505b"
+author: "Wenxin Xu"
+date: "3/14/2021"
+output: 
+    html_document:
+        toc: true
+        highlight: default
+---
+
+<!--- Copyright (c) 2021, M. Ciarleglio --->
+
+<!--- Set global options that apply to every code chunk in this file, can be overwritten in individual chunk headers --->
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE)
+options(scipen=999)               # global option that requests no scientific notation in this session (*optional*)
+options(show.signif.stars=FALSE)  # global option to hide significance stars (*optional*)
+```
+
+<!--- Load packages (previously installed)  --->
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+library(dplyr)
+library(car)
+library(lsmeans)
+library(DescTools)
+```
+
+<!--- Set WD and read data file --->
+```{r, include=FALSE}
+setwd("/Users/xuwenxin/Desktop/BIS 505/Assignments/Lab Assignments")    # set working directory
+hgb <- read.csv("hgb.csv") 
+```
+
+
+# Instructions
+
+This Lab Assignment uses the data from the study conducted to investigate the impacts of herbicide exposure on maternal health described in **Lab Assignment 0**, `hgb.csv`. Report any p-values that are less than 0.001 as <0.001 and round values reported in your narrative text to 3 decimal places. 
+
+
+# Assignment
+
+**1.** <span style="color: #CC0000;">[5 points]</span> Import the CSV file `hgb.csv` in the third code chunk above. Name your data frame `hgb` and re-create the variables `change` and `group_factor` that you created in **Lab Assignment 0**.  [Note: No written response is required for this question. Display the code chunk(s) that perform the requested data management steps for this question.] 
+
+```{r}
+hgb$change <- hgb$hgb36 - hgb$hgb9
+
+hgb <- dplyr::mutate(hgb,
+                     group_factor=factor(group,
+                                         levels=c(1,2,3),
+                                         labels=c("Tap Water","Bottled/Filtered Water","Tap/Bottled/Filtered")))
+```
+
+
+
+
+**2.** The **research question** is: Do differences exist in the *change in hemoglobin* in women who were exposed (tap water only, `group` = 1), marginally exposed (tap and bottled/filtered water, `group` = 3), and not exposed (bottled/filtered water only, `group` = 2) to herbicides in their drinking water? 
+
+**a.** <span style="color: #CC0000;">[10 points]</span> Complete **Table 1a** below (xxx values) with the following descriptive statistics: number of women in each water consumption group, number of non-missing values, mean (standard deviation), and median (range) of the *change in hemoglobin* in women who were exposed, marginally exposed, and not exposed to herbicides in water. Report any decimals to 2 decimal places in the table. [Note: You do not have to summarize your results in complete sentences.] Comment on what you observe in mean change in hemoglobin in the three groups.
+
+
+```{r}
+summze <- function(x) c(n = length(x),
+                        nonmissing = sum(!is.na(x)),
+                        mean = round(mean(x, na.rm = TRUE), 2),
+                        sdev = round(sd(x, na.rm = TRUE), 2),
+                        median = round(median(x, na.rm = TRUE),2),
+                        range = round(range(x, na.rm = TRUE), 2))
+
+summary = aggregate(x = list(change = hgb$change),
+          by = list(water = hgb$group_factor),
+          FUN = summze)
+
+summary_df <- cbind(summary[[ncol(summary)]],summary[-ncol(summary)])
+
+row.names(summary_df) <- summary_df$water
+
+summary_df = summary_df[,1:(ncol(summary_df)-1)]
+
+```
+
+
+
+*Table 1a. Characteristics of the Sample*
+
+**Water Consumption Group** | **Tap Only (N=`r summary_df$n[1]`)** | **Bottled/Filtered Only (N=`r summary_df$n[2]`)** | **Tap/Bottled/Filtered (N=`r summary_df$n[3]`)** |
+----------------------------|:--------------------:|:--------------------:|:--------------------:|
+**Change in Hemoglobin**    |                      |                      |                      |
+N                           | `r summary_df$nonmissing[1]`                 | `r summary_df$nonmissing[2]`                  | `r summary_df$nonmissing[3]`                  |
+Mean (SD)                   | `r summary_df$mean[1]` (`r summary_df$sdev[1]`)            | `r summary_df$mean[2]` (`r summary_df$sdev[2]`)            | `r summary_df$mean[3]` (`r summary_df$sdev[3]`)            |
+Median (Range)              | `r summary_df$median[1]` (`r summary_df$range1[1]`, `r summary_df$range2[1]`)       | `r summary_df$median[2]` (`r summary_df$range1[2]`, `r summary_df$range2[2]`)       | `r summary_df$median[3]` (`r summary_df$range1[3]`, `r summary_df$range2[3]`)       |
+
+
+**Comment**: The difference of mean change in hemoglobin between exposed group 1 (or marginally exposed group 3) and not exposed group 2 is large while mean change of group 1 and group 3 is similar.
+
+
+**b.** <span style="color: #CC0000;">[5 points]</span> Use boxplots to compare the distribution of *change in hemoglobin* in the three exposure groups. Comment on the similarity/differences between groups that you observe.
+
+```{r}
+boxplot(change ~ group_factor, data = hgb,
+        main = "Boxplots of Change in Hemoglobin by Water Consumption",
+        xlab = "",
+        ylab = "Hemoglobin Change")
+```
+
+**Comment**: Hemoglobin change in group 1 and group 3 is similar while Hemoglobin change in group 1 (or group 3) and group 2 is very different.
+
+
+**c.** <span style="color: #CC0000;">[15 points]</span> Is there evidence against the hypothesis that the mean change in hemoglobin during pregnancy is equal in these three populations at the $\alpha$ = 0.05-level? **(i)** State the null and alternative hypotheses of this test. **(ii)** Using the “rule of thumb” presented in the lecture, does the constant variance assumption of analysis of variance seem justified? Explain. **(iii)** From your **R** output, report the value of the test statistic and p-value. **(iv)** State your statistical conclusion and your conclusion in the context of the problem. 
+
+**(i)** $H_0: \mu_1=\mu_2=\mu_3$ vs. $H_1: at\ least\ one\ \mu_i \neq \mu_j$
+
+**(ii)**
+
+```{r}
+maxsd <- max(summary_df$sdev)
+
+minsd <- min(summary_df$sdev)
+
+maxsd/minsd
+```
+
+**Explanation**: The constant variance assumption of analysis of variance is justified because the ratio of the largest group standard deviation (`r round(max(summary_df$sdev), 3)`) to the smallest group standard deviation (`r round(min(summary_df$sdev), 3)`) is equal to `r round(maxsd/minsd, 3)`, which is **less than 2**.
+
+
+**(iii)** 
+
+```{r}
+# ANOVA: Equal variance assumption
+anova.change <- aov(change ~ group_factor, data = hgb)
+
+res.change <- summary(anova.change)
+
+res.change
+```
+
+
+The F test statistics is `r round(res.change[[1]]$"F value"[1],3)`. The p-value is `r round(res.change[[1]]$"Pr(>F)"[1],3)`.
+
+**(iv)** Because p-value is less than 0.05, we have evidence to reject $H_0$ and conclude the mean change in hemoglobin during pregnancy is not equal in all three populations at the $\alpha$ = 0.05-level of significance.
+
+**d.** <span style="color: #CC0000;">[5 points]</span> What is the estimate of the common within-group variance?
+
+The estimate of common within-group variance $s^2_W$ is `r round(res.change[[1]]$"Mean Sq"[2],3)`.
+
+**e.** <span style="color: #CC0000;">[10 points]</span> In question **2(c)**, if you found evidence that mean change in hemoglobin was not equal in all three groups of women, next determine which groups are significantly different from one another, maintaining an overall type I error rate of $\alpha$ = 0.05. Report the Bonferroni-adjusted p-values for all pairwise comparisons. In which two groups do we observe the largest difference in mean hemoglobin change? Report and interpret this estimated difference in means between the two groups with the largest difference.
+
+```{r}
+# Bonferroni adjusted p-values
+res.pair = pairwise.t.test(hgb$change, hgb$group_factor, p.adjust.method = "bonferroni")
+
+res.pair
+```
+The Bonferroni-adjusted p-values for tap water group and bottled/filtered water group is `r round(res.pair[["p.value"]][1,1], 3)`, for tap water group and tap/bottled/filtered water group is `r round(res.pair[["p.value"]][2,1], 3)`, and for bottled/filtered water group and tap/bottled/filtered water group is `r round(res.pair[["p.value"]][2,2], 3)`.
+
+```{r}
+model.change <- lm(change ~ group_factor, data = hgb)
+bontest <- lsmeans(model.change,
+                   pairwise ~ group_factor,
+                   adjust = "bonferroni")
+
+res = summary(bontest$contrasts)
+
+res
+```
+
+**Conclusion**: We observe largest difference in 2 pairs: exposed group vs not exposed group (adjusted p value = `r round(res$p.value[1], 3)`) with estimated difference in mean `r round(res$estimate[1], 3)`, and in marginally exposed group vs not exposed group (adjusted p value = `r round(res$p.value[3], 3)`), with estimated difference in mean `r round(-res$estimate[3], 3)`.
+
+**f.** <span style="color: #CC0000;">[5 points]</span> What is the critical value of the pairwise 2-sided Bonferroni t-test performed comparing the tap water only group (`group` = 1) and the bottled/filtered water only group (`group` = 2), assuming all three pairwise comparisons will be performed?  Remember that the critical value of the Bonferroni tests is based on the $\alpha^*$ level of significance in order to control the overall type I error at the $\alpha = 0.05$ level. How does this critical value compare to the critical value of the same test performed at the $\alpha$ level (instead of the $\alpha^*$ level) (i.e., the unadjusted test)? Under which test is it more difficult to reject $H_0$?  Why is this adjustment necessary?
+
+```{r}
+# critical value of t test for group 1 and group 2
+k = 3
+c = k*(k-1)/2
+alpha = 0.05
+alpha_star = 0.05/c
+
+# critical value of Bonferroni-adjusted t test
+adjusted_critical = qt(1- (alpha_star/2), res$df[1])
+
+# critical value of unadjusted t test
+non_adjusted_critical = qt(1 - (alpha/2), res$df[1])
+```
+
+**Answer**: the critical value of Bonferroni-adjusted t test (`r round(adjusted_critical, 3)`) is larger than that of unadjusted t test (`r round(non_adjusted_critical, 3)`). Under Bonferroni-adjusted t test is more difficult to reject $H_0$. Because perform all `r c` pairwise t-tests will increase the chance of making a Type I error (falsely rejecting $H_0$), the familywise error rate is `r round((1-(1-alpha)^c),3)`.
+
+**g.** <span style="color: #CC0000;">[10 points]</span> Summarize your results and conclusions in a few sentences.  Comment on whether your test results support what you saw summarized numerically in **2(a)** and graphically in **2(b)**.  Our goal is to address the **research question** above.
+
+*Answer*: There is significant difference between women who were exposed (tap water only, group = 1) and not exposed (bottled/filtered water only, group = 2) (adjusted p value = `r round(res$p.value[1], 3)`), and significant difference between women who were marginally exposed (tap and bottled/filtered water, group = 3) and not exposed (adjusted p value = `r round(res$p.value[3], 3)`). These findings are consistent with results in table and boxplot.
+
+
+
+**3.**  Remember that this is an observational study in that women are not assigned or randomized to their exposure group.  The **research question** is:  Do differences exist in the *baseline hemoglobin* `hgb9` in women who were exposed (tap water only), marginally exposed (tap and bottled/filtered water), and not exposed (bottled/filtered water only) to herbicides in their drinking water?
+
+**a.** <span style="color: #CC0000;">[10 points]</span> Complete **Table 1b** below (xxx values) with the following descriptive statistics: number of non-missing values, mean (standard deviation), and median (range) of *baseline hemoglobin* in women who were exposed, marginally exposed, and not exposed to herbicides in water. Report any decimals to 2 decimal places in the table. [Note: You do not have to summarize your results in complete sentences.] Comment on what you observe in mean baseline hemoglobin in the three groups.
+
+
+
+```{r}
+summary_2 = aggregate(x = list(hgb9 = hgb$hgb9),
+          by = list(water = hgb$group_factor),
+          FUN = summze)
+
+summary_df_2 <- cbind(summary_2[[ncol(summary_2)]],summary_2[-ncol(summary_2)])
+
+row.names(summary_df_2) <- summary_df_2$water
+
+summary_df_2 = summary_df_2[,1:(ncol(summary_df_2)-1)]
+
+```
+
+
+
+*Table 1b. Characteristics of the Sample (continued)*
+
+**Water Consumption Group** | **Tap Only (N=`r summary_df_2$n[1]`)** | **Bottled/Filtered Only (N=`r summary_df_2$n[2]`)** | **Tap/Bottled/Filtered (N=`r summary_df_2$n[3]`)** |
+----------------------------|:--------------------:|:--------------------:|:--------------------:|
+**Week 9 Hemoglobin**    |                      |                      |                      |
+N                           | `r summary_df_2$nonmissing[1]`                 | `r summary_df_2$nonmissing[2]`                  | `r summary_df_2$nonmissing[3]`                  |
+Mean (SD)                   | `r summary_df_2$mean[1]` (`r summary_df_2$sdev[1]`)            | `r summary_df_2$mean[2]` (`r summary_df_2$sdev[2]`)            | `r summary_df_2$mean[3]` (`r summary_df_2$sdev[3]`)            |
+Median (Range)              | `r summary_df_2$median[1]` (`r summary_df_2$range1[1]`, `r summary_df_2$range2[1]`)       | `r summary_df_2$median[2]` (`r summary_df_2$range1[2]`, `r summary_df_2$range2[2]`)       | `r summary_df_2$median[3]` (`r summary_df_2$range1[3]`, `r summary_df_2$range2[3]`)       |
+
+
+**Comment**: mean baseline hemoglobin in exposed group 1 (`r summary_df_2$mean[1]`) is different from that in not exposed group 2 (`r summary_df_2$mean[2]`) and marginally exposed group 3 (`r summary_df_2$mean[3]`), while mean baseline hemoglobin in group 2 and group 3 is similar.
+
+**b.** <span style="color: #CC0000;">[15 points]</span> Is there evidence against the hypothesis that the mean baseline hemoglobin is equal in these three populations at the $\alpha$ = 0.05-level? **(i)** State the null and alternative hypotheses of this test. **(ii)** Again check the “rule of thumb” to assess the ANOVA constant variance assumption. **(iii)** From your **R** output, report the value of the test statistic and p-value. **(iv)** State your statistical conclusion and your conclusion in the context of the problem. 
+
+**(i)** 
+
+$H_0: \mu_1=\mu_2=\mu_3$ vs. $H_1: at\ least\ one\ \mu_i \neq \mu_j$
+
+**(ii)** 
+
+
+```{r}
+maxsd <- max(summary_df_2$sdev)
+
+minsd <- min(summary_df_2$sdev)
+
+maxsd/minsd
+```
+
+**Explanation**: The constant variance assumption of analysis of variance is justified because the ratio of the largest group standard deviation (`r round(max(summary_df_2$sdev), 3)`) to the smallest group standard deviation (`r round(min(summary_df_2$sdev), 3)`) is equal to `r round(maxsd/minsd, 3)`, which is **less than 2**.
+
+
+**(iii)** 
+
+```{r}
+# ANOVA: Equal variance assumption
+anova.hgb9 <- aov(hgb9 ~ group_factor, data = hgb)
+
+res.hgb9 <- summary(anova.hgb9)
+
+res.hgb9
+```
+
+
+The F test statistics is `r round(res.hgb9[[1]]$"F value"[1],3)`. The p-value is `r round(res.hgb9[[1]]$"Pr(>F)"[1],3)`.
+
+**(iv)** Because p-value is less than 0.05, we have evidence to reject $H_0$ and conclude the mean baseline hemoglobin is not equal in all three populations at the $\alpha$ = 0.05-level of significance.
+
+
+**c.** <span style="color: #CC0000;">[10 points]</span>	[Note: No analyses are required for question.]  If some groups of women tend to begin the study with higher or lower levels of hemoglobin, do you think this could affect how much their hemoglobin can/will decrease during pregnancy? Since we want to study how exposure to herbicides (water consumption group is our proxy for herbicide exposure) affects change in hemoglobin during pregnancy, do you think that differences in baseline hemoglobin should be something we account (“control”) for in our analysis of the relationship between change in hemoglobin and exposure group?  
+
+
+**Answer**: I think this could affect how much their hemoglobin can/will decrease during pregnancy. I think differences in baseline hemoglobin should be controled in our analysis of the relationship between change in hemoglobin and exposure group.
+
+```{r}
+# critical value for F test
+# qf(0.95,3,136)
+qf(0.95,3,36)
+```
+```{r}
+# p value for F test
+# 1-pf(5.87,3,136)
+1-pf(6.69,3,36)
+```
+```{r}
+
+teststat=-3.69
+N = 35*4
+k = 4
+df=N-k
+c = 3
+alphastar = 0.05/c
+p_value = 2*(1-pt(abs(teststat), df))
+# p_value
+
+t_critstar = qt(1-alphastar/2, df)
+
+t_critstar
+```
+

@@ -1,0 +1,501 @@
+---
+title: "Lab 3 BIS 505b"
+author: "Maria Ciarleglio"
+date: "3/1/2021"
+output: 
+    html_document:
+        toc: true
+        highlight: default
+---
+
+<!--- Copyright (c) 2021, M. Ciarleglio --->
+
+<!--- Set global options --->
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE)
+options(scipen=999)               # global option that requests no scientific notation in this session
+options(show.signif.stars=FALSE)  # global option to hide significance stars 
+```
+
+<!--- Load packages --->
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+library(car)
+library(lsmeans)
+library(DescTools)
+```
+
+<!--- Set WD and read data file --->
+```{r, include=FALSE}
+#setwd("C:\\BIS_505\\LABS\\Lab3")  # modify path to your R Lab3 folder
+fhs <- read.csv("fhs_exam1.csv")
+```
+
+
+# Goal of Lab 3
+
+In **Lab 3**, we will **(1)** compare the mean of a quantitative response variable across $k>2$ populations, $\mu_1$, $\mu_2$, ..., $\mu_k$, using **Analysis of Variance (ANOVA)** and **(2)** explore significant differences that are found through pairwise comparisons of population means using the **Bonferroni multiple comparison procedure**.
+
+
+# Analysis Data Set
+
+In this lab, we will analyze data from the Framingham Heart Study `fhs_exam1.csv` (full data set imported as `fhs` in code chunk 3 above) and compare clinical characteristics of individuals within three BMI categories: normal weight, overweight, and obese. We will exclude underweight individuals from this analysis, so, below, `fhs1` includes the subset of individuals in the `fhs` data frame with `BMI >= 18.5` (BMI $<$ 18.5 is considered underweight).
+
+```{r}
+# Exclude underweight individuals
+fhs1 <- subset(fhs, BMI >= 18.5)
+dim(fhs1)
+```
+
+Next, we will create a subset of `fhs1` that includes the first 200 rows and call this data frame `fhs200`. 
+
+```{r}
+# Select first 200 rows from fhs1 data frame for analysis
+fhs200 <- fhs1[1:200,]
+dim(fhs200)    # should only include 200 rows
+```
+
+
+## Research Question
+
+**Our Research Question:**
+
+- Do differences exist in the average systolic blood pressure and average heart rate in the population of individuals who are normal weight, overweight, and obese?
+
+
+**Variables of Interest:**
+
+- `SYSBP` = systolic blood pressure (mmHg)
+- `HEARTRTE` = heart rate (beats/minute)
+- `BMI` = body mass index (kg/m^2)
+
+
+## Creating New Variables
+
+Begin by adding the grouping variable, `BMIGRP`, and its factor version, `BMIGRP_factor`, to `fhs200`. `BMIGRP` groups `BMI` into the following categories:
+
+- *Normal*: BMI between 18.5 and <25
+- *Overweight*: BMI between 25.0 and <30
+- *Obese*: BMI 30 or higher 
+
+```{r}
+# Grouping BMI
+fhs200$BMIGRP[fhs200$BMI < 25] = 1
+fhs200$BMIGRP[fhs200$BMI >= 25 & fhs200$BMI < 30] = 2
+fhs200$BMIGRP[fhs200$BMI >= 30] = 3
+table(fhs200$BMIGRP, useNA = "ifany", dnn = "BMI Group") # useNA = "ifany" displays NA category
+
+# Creating BMI_factor
+fhs200$BMIGRP_factor <- factor(fhs200$BMIGRP,
+                               levels = 1:3, 
+                               labels = c("Normal", "Overweight", "Obese"),
+                               ordered = TRUE)           # optional to specify as ordinal factor
+
+# Number of individuals in each BMI category 
+table(fhs200$BMIGRP_factor, useNA = "ifany", dnn = "BMI Group")
+```  
+
+
+## `aggregate()` Function
+
+We can check that the categories of `BMIGRP` were created correctly by looking at the range of `BMI` within each level of `BMIGRP`. For example, the range of `BMI` in the normal weight BMI group should be between 18.5 and less than 25.  The `aggregate()` function in **R** is useful for summarizing a quantitative variable by levels of a factor variable. 
+
+`aggregate()` Function Arguments | Option Definition 
+:-----------------:|:------------------------------------|
+`x=list()`         | Quantitative variable(s) to be summarized |
+`by=list()`        | Grouping variable |
+`FUN=`             | Summary statistic (e.g., mean, sd, min, max) |
+`na.rm=`           | How `FUN` should handle missing values (e.g., `na.rm=TRUE`) |
+|
+
+The function `range()` in **R** returns a vector containing the minimum and maximum of the function argument. Thus, we will specify `FUN=range` in the `aggregate()` function. `x=` is our quantitative variable for which we would like the range reported (`BMI`) and `by=` is our grouped/factor variable (`BMIGRP_factor`).
+
+In the code below, `bmi` is the label that we are applying to the variable being summarizing (`BMI`) in the displayed output. Applying labels helps make the output more understandable to the reader. Similarly, `BMIcategory` is the label that is applied to the factor variable in the displayed output.
+
+```{r}
+# Report range (minimum and maximum) of BMI in each BMI category
+aggregate(x = list(bmi = fhs200$BMI),                    # Quantitative variable summarized
+          by = list(BMIcategory = fhs200$BMIGRP_factor), # Factor variable
+          FUN = range,                          # Function applied to quantitative variable
+          na.rm = TRUE)                         # Option for handling missing values
+```
+
+`bmi.1` in the table above is the minimum value and `bmi.2` is the maximum value. Based on the results above, `BMIGRP` was created correctly.
+
+We can equivalently use bracket `[ ]` notation to report the range of `BMI` within the three levels of `BMIGRP_factor`:
+
+```{r}
+# Summarizing BMI in normal weight group
+range(fhs200$BMI[fhs200$BMIGRP_factor == "Normal"], na.rm = TRUE)
+
+# Summarizing BMI in overweight group
+range(fhs200$BMI[fhs200$BMIGRP_factor == "Overweight"])
+
+# Summarizing BMI in obese group
+range(fhs200$BMI[fhs200$BMIGRP_factor == "Obese"])
+```
+
+
+# Exploratory Analyses by Group
+
+We would like to compare the **quantitative** variables `SYSBP` and `HEARTRTE` in the three BMI categories. We begin our analyses with simple graphical comparisons and report summary statistics by group. 
+
+
+## Boxplots by Group
+
+We can plot **boxplots** of the **quantitative** variables separately by group. In the `boxplot()` function, use a formula statement to specify the quantitative variable being plotted followed by `~` and the grouping variable (a factor):
+
+```{r, fig.align="center", out.width='50%'}
+# Boxplots of systolic blood pressure by BMIGRP_factor
+boxplot(SYSBP ~ BMIGRP_factor, data = fhs200, 
+        main="Boxplots of Systolic Blood Pressure by BMI Category",
+        xlab = "", ylab = "Systolic Blood Pressure")
+```
+
+There seems to be an increasing trend in systolic blood pressure as BMI category increases. 
+
+----
+
+<span style="color: #2980B9;">**Exercise**: Create boxplots of `HEARTRTE` by BMI category `BMIGRP_factor`. Describe what you see. </span> 
+
+----
+
+<details><summary>Answer:</summary>
+
+```{r, fig.align="center", out.width='50%'}
+# Boxplots of heart rate by BMIGRP_factor
+boxplot(HEARTRTE ~ BMIGRP_factor, data = fhs200, 
+        main="Boxplots of Heart Rate by BMI Category",
+        xlab = "", ylab = "Heart Rate")
+```
+
+> Heart rate appears fairly similar across BMI categories. 
+
+
+## Summary Statistics by Group
+
+Along with graphical summaries by group, we would like to examine numerical summaries by group. Thus, the next step is to report the **summary statistics** of the **quantitative** variable `SYSBP` in the three BMI categories. Again, we can apply the `aggregate()` function to report common summary statistics such as sample size, mean, standard deviation and variance by group. It would be nice if we could report all of these measures in one summary table and we can accomplish this by defining our own function in the `FUN=` argument of `aggregate()` that returns all summary statistics of interest.
+
+Below, we define a function (`summze()`) that combines (`c()`) several summary statistics:
+
+- sample size is found using `sum(!is.na(x))`
+- mean is found using `mean(x, na.rm=TRUE)`
+- standard deviation is found using `sd(x, na.rm=TRUE)`
+- variance is found using `var(x, na.rm=TRUE)`
+
+We can apply the `summze()` function to any quantitative variable. 
+
+```{r}
+# Defining our own function summze() that reports summary statistics of argument x
+summze <- function(x) c(n = sum(!is.na(x)),
+                        mn = mean(x, na.rm = TRUE),
+                        sdev = sd(x, na.rm = TRUE),
+                        varn = var(x, na.rm = TRUE))
+
+# Report summary of SYSBP in all patients in fhs200
+summze(fhs200$SYSBP)
+```
+
+Above, we summarize `SYSBP` in the full data frame `fhs200`. Average systolic blood pressure in our sample is equal to `r summze(fhs200$SYSBP)[2]`. To summarize `SYSBP` by `BMIGRP_factor`, we simply specify the `summze()` function in the `FUN=` argument of `aggregate()`:
+
+```{r}
+# Report summary of SYSBP in each BMI category
+aggregate(x = list(sysbp = fhs200$SYSBP), 
+          by = list(bmi = fhs200$BMIGRP_factor),
+          FUN = summze)
+```
+
+Just as we saw in the boxplots, there tends to be an increase in systolic blood pressure as BMI category increases. Standard deviation of systolic blood pressure is also similar in the three groups.  Next, we will determine if there the data support some significant difference in the average systolic blood pressure in these three populations. 
+
+----
+
+<span style="color: #2980B9;">**Exercise**: Summarize `HEARTRTE` by BMI category `BMIGRP_factor`. </span> 
+
+----
+
+<details><summary>Answer:</summary>
+
+```{r}
+# Report summary of HEARTRTE in each BMI category
+aggregate(x = list(heartrte = fhs200$HEARTRTE), 
+          by = list(bmi = fhs200$BMIGRP_factor),
+          FUN = summze)
+```
+
+> Heart rate appears fairly similar across BMI categories. Those who are overweight have the lowest average heart rate. Those who are of normal weight have the highest average heart rate.
+
+
+# Analysis of Variance (ANOVA)
+
+## Method 
+
+**One-way analysis of variance (ANOVA)** is used to compare the mean of a quantitative variable $\mu$ across $k > 2$ independent populations, where $\mu_j$ is the mean of the response variable in population $j$. Under $H_0$, there is no difference in the $k$ population means, or $\mu_1 = \mu_2 = \ldots = \mu_k$. Under $H_1$, there are at least two population means that are not equal (i.e., the means are not all equal). Two of the underlying assumptions of ANOVA are: large samples ($n_j \geq 30$) or Normal populations and equal population variances ($\sigma_1^2 = \sigma_2^2 = \ldots = \sigma_k^2$).  
+
+The **ANOVA F-test statistic** is equal to the ratio of the observed between-group variability, $s_B^2 = \frac{SS_B}{k-1} = MS_B$ (i.e., a measure of the difference among the sample means), to the (pooled) within-group variability $s_W^2 = \frac{SS_W}{N-k} = MS_W$, giving $F = \frac{MS_B}{MS_W}$.
+
+The ANOVA F-statistic is compared to an $F$-distribution with numerator degrees of freedom $df_1 = k-1$, and denominator degrees of freedom $df_2 = N-k$, where $N$ is the total number of observations used in the analysis from the $k$ groups, or $N = n_1 + n_2 + \ldots + n_k$.  
+
+Note that $s_W^2$ is our estimate of the pooled (constant) variance of the response in each group. That is, ANOVA assumes $\sigma_1^2 = \sigma_2^2 = \ldots = \sigma_k^2 = \sigma^2$, and $s_W^2$ is our estimate of $\sigma^2$. ANOVA is generally considered robust to departures within a ratio of standard deviations (largest sample standard deviation/smallest sample standard deviation) less than or equal to 2 (our *rule of thumb*). Formal hypothesis tests to check the homoscedasticity (equality of variance) assumption across groups are discussed below.
+
+If the variability within the $k$ groups is small relative to the variability among the sample means, this suggests the population means are not all equal. This scenario will yield a large F-statistic and support rejecting $H_0$.  
+
+ANOVA results are presented in an **ANOVA table**, which partitions a measure of the total variation of the response ($SS_T$) into the variation between groups ($SS_B$) and the variation within groups ($SS_W$), also known as the residual sum of squares or the error sum of squares.
+
+Source of Variation | Sum of Squares (SS) | Degrees of Freedom (df) | Mean Squares (MS) | F
+------|:----:|:-----:|:---:|:---:|
+Between (group) | $SS_B$ | $k-1$ | $MS_B = s_B^2 = \dfrac{SS_B}{k-1}$ | $\dfrac{MS_B}{MS_W}$ |
+Within (error)  | $SS_W$ | $N-k$ | $MS_W = s_W^2 = \dfrac{SS_W}{N-k}$ | |
+**Total**       | $SS_T$ |
+|
+
+
+The `aov()` function in **R** is used to carry out the ANOVA test, and the `summary()` function is used to produce the ANOVA table. We again use the traditional formula structure `analysis_variable ~ group_variable` where the `analysis_variable` is the quantitative variable that we would like to compare across levels of the `group_variable` (a factor).
+
+`aov()` Function Arguments | Option Definition
+:-------------:|:--------------------|
+`formula=`     | `analysis_variable ~ group_variable` |
+`data=`        | Data frame containing sample data |
+| 
+
+
+## Equality of Variance Assumption
+
+In **Lesson 3**, we mentioned the **rule of thumb** for assessing the **equality of variance assumption** (i.e., homoscedasticity).  This rule of thumb states that the ANOVA F-test is approximately correct when the *largest sample standard deviation* is no more than twice as large as the *smallest sample standard deviation*. 
+
+Formal hypothesis tests such as **Bartlett’s test** and **Levene’s test** can be used to check for equality of variance/homoscedasticity (i.e., formally test $H_0: \sigma_1^2 = \sigma_2^2 = \ldots = \sigma_k^2$ vs. $H_1: H_0$ is false). Bartlett's test is implemented using the base **R** function `bartlett.test()`. Levene's test is implemented using the `leveneTest()` function in the `car` package. A statistically significant result (p-value $\leq$ 0.05) suggests a violation of the equality of variance assumption. Again, hypothesis testing is sensitive to the sample size used in the analysis, so exercise caution when using the test results to determine if the groups are heteroscedastic, suggesting traditional ANOVA is not appropriate.
+
+One approach to dealing with heteroscedastic data in a one-way ANOVA is to apply **Welch's correction**. Recall that this correction was used when unequal variances were assumed in the two-sample t-test. Welch's correction is implemented using the `oneway.test()` function and the `var.equal=FALSE` argument. The `oneway.test()` function uses the same arguments, `formula=` and `data=`, used in the `aov()` function. However, unlike the `aov()` function, the `summary()` function is not used with the output of `oneway.test()`.
+
+
+`oneway.test()` Function Arguments | Option Definition
+:-------------:|:--------------------|
+`formula=`     | `analysis_variable ~ group_variable` |
+`data=`        | Data frame containing sample data |
+`var.equal=`   | Equality of variance assumption (default `=FALSE` giving Welch's correction) |
+| 
+
+Let us formally compare mean systolic blood pressure (`SYSBP`) and mean heart rate (`HEARTRTE`) in the three populations defined by BMI category (`BMIGRP_factor`). 
+
+
+## Application to Systolic Blood Pressure
+
+Under $H_0: \mu_1 = \mu_2 = \mu_3$, or mean systolic blood pressure is equal in the three BMI categories. To check the **equality of variance assumption** using the **rule of thumb**, take the ratio of the largest sample standard deviation to the smallest sample standard deviation: 
+
+```{r}
+# Standard deviation of SYSBP in each BMI category
+sds <- aggregate(x = list(sysbp.sd = fhs200$SYSBP), 
+                 by = list(bmi = fhs200$BMIGRP_factor),
+                 FUN = sd)
+sds
+
+# Largest group SD
+maxsd <- max(sds[2])
+maxsd
+
+# Smallest group SD
+minsd <- min(sds[2])
+minsd
+
+# Rule of thumb: Check ratio of maxsd/minsd
+maxsd/minsd
+```
+
+The ratio of the largest group standard deviation (`r round(maxsd,3)`) to the smallest group standard deviation (`r round(minsd,3)`) is equal to `r round(maxsd/minsd,3)`, which is less than 2, suggesting the equality of variance assumption is not violated. Performing **Bartlett's test** and **Levene's test** of equality of variances to formally test the homoscedasticity assumption:
+
+```{r}
+# Bartlett's test
+bartlett.test(SYSBP ~ BMIGRP_factor, data = fhs200)
+
+# Levene's test (in "car" package)
+leveneTest(SYSBP ~ BMIGRP_factor, data = fhs200) 
+```
+
+Based on the p-values of the tests (p-values > 0.05), we do not have evidence to conclude that the equality of variance assumption is violated.
+
+Next, performing the ANOVA:
+
+```{r}
+# ANOVA: Equal variance assumption
+anova.sysbp <- aov(SYSBP ~ BMIGRP_factor, data = fhs200)
+res.sysbp <- summary(anova.sysbp)
+res.sysbp
+```
+
+The data support the conclusion that mean systolic blood pressure is not equal in all three BMI categories. The F-statistic is equal to `r round(res.sysbp[[1]]$"F value"[1],2)`, which is compared to an $F$-distribution, F(df1=`r res.sysbp[[1]]$"Df"[1]`, df2=`r res.sysbp[[1]]$"Df"[2]`). The critical value of this $F$-distribution at the $\alpha$ = 0.05-level of significance is found using the function `qf(1-alpha, df1, df2)` to equal `r round(qf(0.95, res.sysbp[[1]]$"Df"[1], res.sysbp[[1]]$"Df"[2]),3)`. Since our test statistic is larger than the critical value of the test, we have evidence to reject $H_0$ at the $\alpha$ = 0.05-level of significance and conclude the mean systolic blood pressure is not the same in all three populations (p = `r round(res.sysbp[[1]]$"Pr(>F)"[1],5)`). 
+
+**Note**: We observe such a large test statistic in this example because the variability between mean systolic blood pressure in the three groups (i.e., $s^2_B$ = `r round(res.sysbp[[1]]$"Mean Sq"[1],2)`) is large relative to the common variability of systolic blood pressure within groups (i.e., $s^2_W$ = `r round(res.sysbp[[1]]$"Mean Sq"[2],2)`). 
+
+Request **Welch's correction** when the equality of variance assumption is violated using the `oneway.test()` function along with the `var.equal=FALSE` option:
+
+```{r}
+# ANOVA: Unequal variance assumption (Welch's correction)
+oneway.test(SYSBP ~ BMIGRP_factor, data = fhs200, var.equal = FALSE)
+```
+
+Again, the data support rejection of $H_0$ and conclusion that mean systolic blood pressure is not equal in all three BMI populations.
+
+----
+
+<span style="color: #2980B9;">**Exercise**: Determine if differences exist in the average heart rate in the population of individuals who are normal weight, overweight, and obese: (i) Check the equality of variance assumption using the rule of thumb, (ii) if there is no violation, perform ANOVA and (iii) interpret the result.</span> 
+
+----
+
+<details><summary>Answer:</summary>
+
+> (i) Checking the equality of variance assumption:
+
+```{r}
+# Standard deviation of HEARTRTE in each BMI category
+sds.hr <- aggregate(x = list(heartrte.sd = fhs200$HEARTRTE), 
+                    by = list(bmi = fhs200$BMIGRP_factor),
+                    FUN = sd)
+sds.hr
+
+# Largest group SD
+maxsd.hr <- max(sds.hr[2])
+maxsd.hr
+
+# Smallest group SD
+minsd.hr <- min(sds.hr[2])
+minsd.hr
+
+# Rule of thumb: Check ratio of maxsd.hr/minsd.hr
+maxsd.hr/minsd.hr
+```
+
+> The ratio of the largest group standard deviation to the smallest group standard deviation is equal to `r round(maxsd.hr/minsd.hr,3)`, which is less than 2, suggesting the equality of variance assumption is not violated. 
+
+> (ii) Performing the ANOVA:
+
+```{r}
+# ANOVA: HEARTRTE
+anova.hr <- aov(HEARTRTE ~ BMIGRP_factor, data = fhs200)
+res.hr <- summary(anova.hr)
+res.hr
+```
+
+> (iii) Interpretation: The data do not provide evidence to reject the null hypothesis that mean heart rate is equal in the three populations defined by BMI category (p = `r round(res.hr[[1]]$"Pr(>F)"[1],2)`). Thus, we cannot conclude that there is a significant difference in mean heart rate in these three populations.  
+
+
+## Equivalence to 2-Sample Pooled t-test when $k=2$
+
+When considering only $k=2$ groups, ANOVA simplifies to a 2-sample pooled t-test. The equality of variance assumption in ANOVA ($\sigma_1^2 = \sigma_2^2 = \ldots = \sigma_k^2$) is equivalent to the pooled t-test assumption ($\sigma_1^2=\sigma_2^2$). In ANOVA, the pooled variance is estimated by $s_W^2$; in a pooled t-test, the pooled variance is estimated by $s_p^2$. When $k=2$, $s_W^2$ simplifies to $s_p^2 = \frac{(n_1-1)\sigma^2_{1}+(n_2-1)\sigma^2_{2}}{n_1+n_2-2}$. You will also find that the square of the pooled t-test statistic $t^2$ is equal to the ANOVA F-statistic when $k=2$ and the p-values are equal to one another since $t_{df}^2 = F(1, df)$.
+
+As an exercise, let us perform a pooled t-test comparing average heart rate in those who are overweight/obese vs. normal weight and then perform same comparison using ANOVA. We begin by adding the overweight/obese indicator `OVERWEIGHTOBESE` and its factor version to the `fhs200` data frame.
+
+```{r}
+#  Overweight/Obese indicator
+fhs200$OVERWEIGHTOBESE <- ifelse(fhs200$BMI >= 25, 1, 0)  # =1 if BMI>=25 is true
+                                                          # =0 if BMI>=25 is false
+
+fhs200$OVERWEIGHTOBESE_factor <- factor(fhs200$OVERWEIGHTOBESE,
+                                        levels = c(0, 1),
+                                        labels = c("No", "Yes"))
+```
+
+Next, perform the pooled 2-sample t-test comparing average heart rate in the population of overweight/obese individuals vs. normal weight individuals to test $H_0: \mu_1 = \mu_2$ vs. $H_1: \mu_1 \neq \mu_2$:
+
+```{r}
+# Pooled t-test
+t.pooled <- t.test(HEARTRTE ~ OVERWEIGHTOBESE_factor, data = fhs200,
+                   var.equal = TRUE,              # pooled t-test
+                   alternative = "two.sided") 
+t.pooled
+```
+
+And the ANOVA to test the same null and alternative hypotheses:
+
+```{r}
+# ANOVA
+anova.hr2 <- aov(HEARTRTE ~ OVERWEIGHTOBESE_factor, data = fhs200)
+res.hr2 <- summary(anova.hr2)
+res.hr2
+```
+
+We observe a borderline significant difference in average heart rate in these two populations. The p-value (p = `r round(res.hr2[[1]]$'Pr(>F)'[1],3)`) is the same in both tests and the square of the pooled t-test statistic t = `r round(t.pooled$statistic,2)`$^2$ is equal to the ANOVA F-test statistic, F = `r round(res.hr2[[1]]$'F value'[1],2)`:
+
+```{r}
+# Pooled t-test statistic
+t.pooled$statistic
+
+# t-test statistic squared
+t.pooled$statistic^2
+
+# ANOVA F-statistic
+res.hr2[[1]]$'F value'[1]
+```
+
+The t-test is more flexible than the ANOVA since one-sided hypothesis tests can be performed. Also, the unequal variance assumption is more commonly used with t-tests, if necessary.
+
+
+# Pairwise Bonferroni Tests
+
+## Adjusted P-values
+
+After observing a statistically significant ANOVA result, **post-hoc pairwise t-tests** are often performed to determine which pairs of means are significantly different. If $k$ groups are compared, a total of $c =$ $k\choose2$ $= k(k-1)/2$ pairwise tests can be performed. In our example, $c$ = `r choose(3,2)` pairwise tests (`group` 1 vs. 2, 1 vs. 3, and 2 vs. 3) will be performed using the `pairwise.t.test()` function. 
+
+Various p-value adjustment methods (e.g., Bonferroni) can be requested to account for this multiplicity of tests using the `p.adjust.method=` argument. P-value adjustment is used to control the family-wise error rate. For example, if you perform 100 pairwise tests, then at the $\alpha=0.05$-level, you would expect 5% of those tests to yield a false positive result. That is, 5% of the time, you would falsely reject $H_0$ and conclude there is a significant difference when there actually is no difference. To control the family-wise type I error rate so that the false positives generated by all tests does not exceed the $\alpha$-level, we perform each test at a more stringent level of significance, (i.e., $\alpha/c$-level in the case of Bonferroni adjustment). 
+
+Traditionally, **multiplicity-adjusted p-values** are reported, which are compared to the **original level of significance**, $\alpha$. In the case of the Bonferroni method, the raw (unadjusted) p-values are multiplied by $c$, the number of pairwise tests performed, to give the Bonferroni-adjusted p-values. Adjusted p-values are used so that they can be compared to the original $\alpha$-level of significance instead of the $\alpha^* = \alpha/c$-level. To request the unadjusted p-values of the pairwise t-tests, use the `p.adjust.method="none"` option in the `pairwise.t.test()` function. In the Bonferroni adjustment method, the unadjusted p-values are compared to the $\alpha^*$-level.
+
+`pairwise.t.test()` Function Arguments | Option Definition
+:-------------:|:--------------------|
+`x=`               | Analysis variable |
+`g=`               | Grouping factor |
+`p.adjust.method=` | `"holm"` (Holm, 1979), `"hochberg"` (Hochberg, 1988), `"hommel"` (Hommel, 1988), `"bonferroni"`, `"BH"`/`"fdr"` (Benjamini & Hochberg, 1995), `"BY"` (Benjamini & Yekutieli), `"none"`
+`alternative=`     | `"two.sided"` (default), `"less"`, `"greater"` |
+|
+
+```{r}
+# Pairwise tests, unadjusted p-value
+pairwise.t.test(fhs200$SYSBP, fhs200$BMIGRP_factor, p.adjust.method = "none")
+```
+
+The unadjusted p-values indicate that, on average, Normal weight and Obese individuals and Overweight and Obese individuals have significantly different systolic blood pressure under a Bonferroni-adjustment (i.e., comparing the *unadjusted* pairwise test p-value to $\alpha^*$ = 0.05/3 = `r round(0.05/3,4)`). For example, the unadjusted p-value comparing the Normal BMI group to the Obese BMI group is found in the lower left corner of the p-value matrix (p-value = `r round(pairwise.t.test(fhs200$SYSBP, fhs200$BMIGRP_factor, p.adjust.method = "none")$p.value[2,1],6)`).  
+
+To report the Bonferroni-adjusted p-values, use the `p.adjust.method="bonferroni"` option in the `pairwise.t.test()` function:
+
+```{r}
+# Bonferroni adjusted p-values
+pairwise.t.test(fhs200$SYSBP, fhs200$BMIGRP_factor, p.adjust.method = "bonferroni")
+```
+
+Comparing the adjusted p-values to the original $\alpha$ = 0.05-level, we again see that average systolic blood pressure is significantly different in the Obese and Normal groups and in the Obese and Overweight groups.
+
+
+## Pairwise Test Statistics
+
+The `lsmeans()` function in the `lsmeans` package reports the pairwise differences in means between groups along with the pairwise test statistics and adjusted p-values. Note that the `lsmeans()` function requires a linear model formulation of the comparison of interest (i.e., `lm(analysis_variable ~ group_variable)`). We must also indicate the `group_variable` in the `pairwise ~ group_variable` argument and the multiple comparison adjustment method in `adjust="bonferroni"` of the `lsmeans()` function: 
+
+```{r}
+# Pairwise differences in means, test statistics and Bonferroni-adjusted p-values
+model.sys <- lm(SYSBP ~ BMIGRP_factor, data = fhs200)
+bontest <- lsmeans(model.sys, 
+                   pairwise ~ BMIGRP_factor,
+                   adjust = "bonferroni")
+bontest$contrasts    # 'estimate' = difference in means
+```
+
+The largest average difference in systolic blood pressure exists between the Obese and Normal BMI categories (described further below). 
+
+
+## Bonferroni-Adjusted Confidence Intervals
+
+We can request the Bonferroni-adjusted simultaneous (i.e., adjusted) confidence intervals for the pairwise differences using the `PostHocTest()` function in the `DescTools` package.  The `PostHocTest()` function requires the traditional ANOVA-object formulation of the comparison used above (i.e., `aov(analysis_variable ~ group_variable)`). Specify `method = "bonferroni"` to request the Bonferroni  multiple comparison adjustment.
+
+```{r}
+# Bonferroni simultaneous CIs and adjusted p-values
+anova.sysbp <- aov(SYSBP ~ BMIGRP_factor, data = fhs200)
+bonci <- PostHocTest(anova.sysbp, method = "bonferroni")
+bonci
+```
+
+On average, those who are Obese have a systolic blood pressure that is `r round(bonci[[1]][2,1],2)` units greater than those who are in the Normal BMI category (95% Bonferroni-adjusted confidence interval `r round(bonci[[1]][2,2],2)`-`r round(bonci[[1]][2,3],2)`; Bonferroni-adjusted p-value = `r round(bonci[[1]][2,4],6)`). Also, those who are Obese have an average systolic blood pressure that is `r round(bonci[[1]][3,1],2)` units greater than those who are Overweight (95% Bonferroni-adjusted confidence interval `r round(bonci[[1]][3,2],2)`-`r round(bonci[[1]][3,3],2)`; Bonferroni-adjusted p-value = `r round(bonci[[1]][3,4],4)`). The difference we observed in the overall ANOVA test was driven by these two significant differences. There is not a significant difference in average systolic blood pressure in the Overweight and Normal BMI populations.
+
+```{r, fig.align="center", out.width='50%'}
+# Plot of Bonferroni simultaneous CIs
+plot(bonci)
+abline(v = 0, col = "blue")  # add vertical line at 0
+```
+
+A plot of the Bonferroni-adjusted confidence intervals for the mean difference in systolic blood pressure between groups shows that the confidence interval for difference in mean systolic blood pressure in the Overweight and Normal groups does include zero, supporting the observed adjusted p-value > 0.05 (i.e., non-significant difference between these two groups).
+

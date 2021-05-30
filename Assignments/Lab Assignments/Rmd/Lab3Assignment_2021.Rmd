@@ -1,0 +1,269 @@
+---
+title: "Lab Assignment 3 BIS 505b"
+author: "Wenxin Xu"
+date: "3/21/2021"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    highlight: default
+    toc: yes
+---
+
+<!--- Copyright (c) 2021, M. Ciarleglio --->
+
+<!--- Set global options that apply to every code chunk in this file, can be overwritten in individual chunk headers --->
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE)
+options(scipen=999)               # global option that requests no scientific notation in this session (*optional*)
+options(show.signif.stars=FALSE)  # global option to hide significance stars (*optional*)
+```
+
+<!--- Load packages (previously installed)  --->
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+library(dplyr)
+library(ggplot2)
+```
+
+<!--- Set WD and read data file --->
+```{r, include=FALSE}
+setwd("/Users/xuwenxin/Desktop/BIS 505/Assignments/Lab Assignments")    # set working directory
+hgb <- read.csv("hgb.csv") 
+```
+
+
+# Instructions
+
+This Lab Assignment uses the data from the study conducted to investigate the impacts of herbicide exposure on maternal health described in **Lab Assignment 0**, `hgb.csv`. Instead of comparing the hemoglobin change between groups of pregnant women exposed and unexposed to herbicides through tap water, we would like to investigate the relationship between hemoglobin change (g/dL) [`change`] and amount of tap water consumed (L) [`water`] in women who consumed some or all tap water during their pregnancies (groups 1 and 3). In this assignment, report any p-values that are less than 0.0001 as **<0.0001** and round values reported in your narrative text to **3** decimal places. **Perform all plotting using `ggplot()`.**
+
+
+# Assignment
+
+**1.** <span style="color: #CC0000;">[5 points]</span> Import the CSV file `hgb.csv` in the third code chunk above. Name your data frame `hgb` and re-create the variable `change` that you created in **Lab Assignment 0**. Since 1-liter changes in water consumed are very small changes, let's instead consider 100-liter changes. To do this, we will re-scale `water` and create the variable `water100` that is equal to `water/100` for use in this Lab Assignment. `water100` measures the amount of tap water consumed in 100s of liters. Finally, create a subset of `hgb` called `hgb13` that includes women who consumed some or all tap water during their pregnancies (groups 1 and 3). You will work with this data frame in this Lab Assignment. [Note: No written response is required for this question. Display the code chunk(s) that perform the requested data management steps for this question.] 
+
+| Variable Name	| Definition  |
+|-------|--------------------------|
+|`change`   | Change in hemoglobin between Week 9 and Week 36 (g/dL) (negative if hemoglobin decreases) |
+|`water100` | Amount of tap water consumed (in 100s of liters) |
+
+
+```{r}
+hgb$change <- hgb$hgb36 - hgb$hgb9
+
+hgb$water100 <- hgb$water/100
+
+hgb13 <- subset(hgb, group==1|group==3)
+```
+
+
+
+
+**2.** The **research question** is: Is exposure to herbicides in drinking water (measured by tap water consumption) associated with hemoglobin change during pregnancy?
+
+**a.** <span style="color: #CC0000;">[10 points]</span> Create a scatter plot of the association between these two quantitative variables. Include axis labels and a title. Is it clear which variable is the independent ($x$) variable and which is the dependent ($y$) variable? If so, create your scatter plot to reflect this. In words, describe the relationship that you see between these two variables in the context of the problem. Do you see any “outlying values” (i.e., values that are not clustered with the rest of the points)? 
+
+```{r}
+ggplot(data=hgb13, aes(x=water100, y=change ))+
+  geom_point(size=1,shape=19,col="blue")+
+  labs(title="Scatter Plot of Hemoglobin Change vs. Tap Water Consumption",
+       x="Tap Water Consumption (100L)", y="Hemoglobin Change (g/dL)")
+```
+
+Answer: Tap Water Consumption is the independent variable and Hemoglobin Change is the dependent variable. The scatter plot shows a modest negative linear relationship between them. I see 1 outlying values on the top left corner. 
+
+**b.** <span style="color: #CC0000;">[10 points]</span> Fit a simple linear regression model with hemoglobin change as the dependent variable ($y$) and tap water consumption as the independent variable ($x$). From this model, report the fitted least squares linear regression line and interpret the estimated slope. Provide a 95% confidence interval for the slope parameter. 
+
+```{r}
+# Simple linear regression model: modeling hemoglobin change using tap water consumption
+reg <- lm(change ~ water100, data=hgb13)
+
+# output results of fitted model
+summary(reg)
+```
+
+```{r}
+# 95% CI for model params
+confint(reg, level=0.95)
+```
+
+1) The fitted least squares linear regression line is $\hat{y} =$ `r round(summary(reg)$coefficients[1],3)` `r round(summary(reg)$coefficients[2],3)` $x$.
+
+2) The estimated slope is equal to `r round(summary(reg)$coefficients[2],3)` [95% CI (`r round(confint(reg)[2,1],3)`, `r round(confint(reg)[2,2],3)`)] indicates that a 1-unit increase in tap water consumption is associated with a `r round(abs(summary(reg)$coefficients[2]),3)`-unit average decrease in hemoglobin change. 
+
+
+**c.** <span style="color: #CC0000;">[10 points]</span> Based on your regression model output from part **(b)**, perform the hypothesis test at the $\alpha$ = 0.05-level to determine if there is a linear relationship between hemoglobin change and amount of tap water consumed. (i) State the null and alternative hypotheses of this test. (ii) From your **R** output, report the value of the test statistic and p-value. (iii) State your statistical conclusion and your conclusion in the context of the problem.
+
+
+
+(i) $H_0: \beta=0\ vs. H_1: \beta\neq0$
+
+(ii) The t-statistic is $t=$`r round(summary(reg)$coefficients[6],3)`, p-value is `r ifelse(summary(reg)$coefficients[8]<.0001,"<.0001",paste("=",round(summary(reg)$coefficients[8],3)))`.
+
+(iii) Because p-value is less than 0.0001, we have evidence to reject \(H_0\) and conclude there is a significant linear relationship between hemoglobin change (g/dL) and amount of tap water consumed (L) in women who consumed some or all tap water during their pregnancies (groups 1 and 3) at the ($\alpha$) = 0.05-level of significance.
+
+**d.** <span style="color: #CC0000;">[7 points]</span> Re-create the scatter plot from part **(a)**, adding the fitted regression line. Comment on how well this line appears to fit the data. Is the outlying value estimated well by this regression line? Will this observation have a positive or negative residual?
+
+```{r}
+ggplot(data=hgb13, aes(x=water100, y=change ))+
+  geom_point(size=1,shape=19)+
+  geom_smooth(method = "lm", formula = y ~ x,
+se = FALSE, col = "blue", linetype = "longdash") + # add regression line (no CI)
+  labs(title="Scatter Plot of Hemoglobin Change vs. Tap Water Consumption",
+       x="Tap Water Consumption (100L)", y="Hemoglobin Change (g/dL)")
+```
+
+
+This line fits the data well. The outlying value is not estimated well by this regression line. This observation has a positive residual.
+
+
+**e.** <span style="color: #CC0000;">[8 points]</span> Report and interpret the Coefficient of Determination for the fitted model. Report the residual standard error of the model; in words, what does this value represent?
+
+The Coefficient of Determination is rather low at `r round(summary(reg)$r.squared,3)`, indicating that tap water consumption only explains `r round(100*summary(reg)$r.squared,1)`% of the total variability in hemoglobin change. The residual standard error $s_{y|x}$ is `r round(summary(reg)$sigma, 3)`, this value represent the estimated variability in $Y$  ($\sigma_{y|x}$)  about the regression line is expected to hold for all values of $X$ (i.e., the constant variance assumption of linear regression).
+
+
+
+**f.** <span style="color: #CC0000;">[10 points]</span> Use **R** to report the expected change in hemoglobin and the 95% confidence interval for the mean change in hemoglobin when 200 L of tap water are consumed. Do the same assuming 400 L of tap water are consumed.
+
+```{r}
+# value of x (tap water consumption) used to estimate y (hemoglobin change)
+x.star <- data.frame(water100=c(200,400))
+
+# fitted value and lower and upper CI for mean at values of x in x.star
+predict(reg, newdata=x.star, interval="confidence", level=0.95)
+```
+
+The fitted line estimates a mean hemoglobin change of `r round(predict(reg, newdata=x.star, interval="confidence")[1,1],3)` in those with tap water consumption = 200 [95% CI (`r round(predict(reg, newdata=x.star, interval="confidence")[1,2],3)`, `r round(predict(reg, newdata=x.star, interval="confidence")[1,3],3)`)]. The estimated mean hemoglobin change in those with tap water consumption = 400 is equal to `r round(predict(reg, newdata=x.star, interval="confidence")[2,1],3)` [95% CI (`r round(predict(reg, newdata=x.star, interval="confidence")[2,2],3)`, `r round(predict(reg, newdata=x.star, interval="confidence")[2,3],3)`)].
+
+
+**g.** <span style="color: #CC0000;">[10 points]</span> Create a scatter plot of residuals vs. fitted values. Does the constant variance assumption appear to hold? Why or why not? Does the outlying value identified in part **(a)** stand out in this scatter plot?  Report the subject ID number (`id`) and residual $e_i$ for this outlying value. 
+
+```{r}
+# append column of predicted values to dataset
+hgb13$predicted <- predict(reg)
+
+# append column of residuals to dataset
+hgb13$residuals <- resid(reg)
+
+# summary statistics of residuals
+summary(hgb13$residuals)
+```
+
+```{r}
+# sort data frame by largest |residuals|
+hgb13sorted <- hgb13[order(-abs(hgb13$residuals)),]
+
+head(hgb13sorted)
+```
+
+```{r}
+# scatter plot of residuals vs. fitted values
+ggplot(data=hgb13,aes(x=predicted,y=residuals))+
+  geom_point()+
+  geom_hline(yintercept=0,col="red")+
+  labs(title="Residuals vs. Fitted values",
+       x="Fitted values",y="Residuals")
+```
+
+The constant variance assumption appears to hold because the plot of residuals vs. fitted values above does appear random. The outlying value identified in part **(a)** stand out in this scatter plot since the residual is far from the main cluster of residuals.The outlying value's subject ID number is `r hgb13sorted$id[1]` and residual $e$ is `r round(hgb13sorted$residuals[1],3)`. 
+
+**h.** <span style="color: #CC0000;">[10 points]</span> Create a histogram and Normal Q-Q plot of residuals. What linear model assumption is being evaluated by these plots? Does this assumption appear to be violated? Does the outlying value identified in part **(a)** stand out in these plots? 
+
+```{r}
+# histogram of residuals
+ggplot(data=hgb13,aes(x=residuals))+
+  geom_histogram(bins=15,
+                 col="black",
+                 fill="blue",
+                 alpha=0.2,
+                 closed="left",
+                 na.rm=TRUE)+
+  labs(title="Frequency Histogram of Model Residuals",
+       x="Residuals",y="Count")
+
+# Normal Q-Q plot of residuals
+ggplot(data=hgb13,aes(sample=residuals))+
+  geom_qq()+
+  geom_qq_line(col="blue")+
+  labs(title="Normal Q-Q Plot of Model Residuals",
+       x="Theoretical Quantiles",y="Sample Quantiles")
+```
+
+
+Normality of residuals is being evaluated by these plots. These plots do indicate right skewed residuals. The assumption this appear to be violated. Subject `r hgb13sorted$id[1]`'s large residual does stand out in these plots. 
+
+**i.** <span style="color: #CC0000;">[15 points]</span> (i) Remove the observation identified in part **(g)** from the `hgb13` data frame and re-fit the model. Report the re-fitted regression line. Are the intercept and slope close to those from the original model fit in part **(b)**?  (ii) Next, highlight the outlying value that was removed from the analysis in a scatter plot of hemoglobin change vs. tap water consumption. Include the original fitted regression line from **(b)** as a blue line and the re-fitted regression line as a red line in that scatter plot. Has the fitted line changed greatly after removing the outlying value (that is, would you consider the outlier to be an “influential” point)? (iii) Finally, create a scatter plot of residuals vs. fitted values, histogram of residuals and Normal Q-Q plot of residuals for the re-fit model and comment on whether these plots have changed/improved in any way after removing the outlying observation.
+
+(i) 
+
+```{r}
+# filter hgb13 to remove id==979
+sensitivity_hgb13 <- subset(hgb13, id !=hgb13sorted$id[1])
+
+# sensitivity analysis
+reg.sens <- lm(change ~ water100, data=sensitivity_hgb13)
+
+summary(reg.sens)
+```
+
+The refitted regression line is $\hat{y} =$ `r round(summary(reg.sens)$coefficients[1],3)`  `r round(summary(reg.sens)$coefficients[2],3)` $x$.  The intercept  (`r round(summary(reg.sens)$coefficients[1],3)` [95% CI (`r round(confint(reg.sens)[1,1],3)`, `r round(confint(reg.sens)[1,2],3)`)]) and slope (`r round(summary(reg.sens)$coefficients[2],3)` [95% CI (`r round(confint(reg.sens)[2,1],3)`, `r round(confint(reg.sens)[2,2],3)`)]) are close to intercept (`r round(summary(reg)$coefficients[1],3)` [95% CI (`r round(confint(reg)[1,1],3)`, `r round(confint(reg)[1,2],3)`)]) and slope (`r round(summary(reg)$coefficients[2],3)` [95% CI (`r round(confint(reg)[2,1],3)`, `r round(confint(reg)[2,2],3)`)]) from the original model fit in part **(b)**.
+
+
+(ii) 
+
+```{r}
+highlight_hgb13 <- subset(hgb13, id==hgb13sorted$id[1])
+
+ggplot()+
+  geom_point(data=hgb13, aes(x=water100, y=change ), size=1,shape=19)+
+  geom_smooth(data=hgb13, aes(x=water100, y=change ),
+              method = "lm", formula = y ~ x, se = FALSE, col = "blue") + # add regression line as blue line
+    geom_smooth(data=sensitivity_hgb13, aes(x=water100, y=change ),
+              method = "lm", formula = y ~ x, se = FALSE, col = "red", linetype = "longdash") + # add re-fitted regression line as red line
+  labs(title="Scatter Plot of Hemoglobin Change vs. Tap Water Consumption",
+       x="Tap Water Consumption (100L)", y="Hemoglobin Change (g/dL)")+
+  geom_point(data=highlight_hgb13, aes(x=water100, y=change),
+             col="red",size=3)
+```
+
+The fitted line have not changed greatly after removing the outlying value , thus, I would not consider the outlier to be an “influential” point. 
+
+
+(iii) 
+
+```{r}
+# scatter plot of residuals vs. fitted values for the re-fit model
+ggplot(data=sensitivity_hgb13,aes(x=predicted,y=residuals))+
+  geom_point()+
+  geom_hline(yintercept=0,col="red")+
+  labs(title="Residuals vs. Fitted values",
+       x="Fitted values",y="Residuals")
+
+# histogram of residuals for the re-fit model
+ggplot(data=sensitivity_hgb13,aes(x=residuals))+
+  geom_histogram(bins=15,
+                 col="black",
+                 fill="blue",
+                 alpha=0.2,
+                 closed="left",
+                 na.rm=TRUE)+
+  labs(title="Frequency Histogram of Model Residuals",
+       x="Residuals",y="Count")
+
+# Normal Q-Q plot of residuals for the re-fit model
+ggplot(data=sensitivity_hgb13,aes(sample=residuals))+
+  geom_qq()+
+  geom_qq_line(col="blue")+
+  labs(title="Normal Q-Q Plot of Model Residuals",
+       x="Theoretical Quantiles",y="Sample Quantiles")
+```
+
+After removing the outlier, all the figures are improved. The scatter plot does appear random which indicates constant variance. The histogram becomes bell-shape, and the Q-Q plot becomes more aligned along the diagonal reference line, both 2 plots indicate the distribution of residuals is normal.
+
+
+**j.** <span style="color: #CC0000;">[5 points]</span> Report the residual standard error from the re-fit model. Comment on how this value has changed from the original model and why the direction of the change makes sense.
+
+The residual standard error $s_{y|x}$ is `r round(summary(reg.sens)$sigma, 3)`, which is smaller than the residual standard error  of the original model (`r round(summary(reg)$sigma, 3)`). Since we remove one outlier value, the variability in $Y$  ($\sigma_{y|x}$)  about the regression line is expected to hold for all values of $X$ should be smaller, thus, the new residual standard error should be smaller.
+
+
+
+

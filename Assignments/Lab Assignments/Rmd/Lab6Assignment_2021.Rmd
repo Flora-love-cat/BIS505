@@ -1,0 +1,605 @@
+---
+title: "Lab Assignment 6 BIS 505b"
+author: "Wenxin Xu"
+date: "4/25/2021"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    toc: yes
+    highlight: default
+---
+
+<!--- Copyright (c) 2021, M. Ciarleglio --->
+
+<!--- Set global options that apply to every code chunk in this file, can be overwritten in individual chunk headers --->
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE)
+#options(scipen=999)               # global option that requests no scientific notation in this session (*optional*)
+options(show.signif.stars=FALSE)  # global option to hide significance stars (*optional*)
+```
+
+<!--- Load packages (previously installed)  --->
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+# Load any necessary packages here
+library(dplyr)
+library(ggplot2)
+library(car)
+library(MASS)
+library(arsenal)
+library(knitr)
+```
+
+<!--- Set WD and read data file --->
+```{r, include=FALSE}
+setwd("/Users/xuwenxin/Desktop/BIS 505/Assignments/Lab Assignments")    # set working directory
+hcu <- read.csv("hcu.csv")
+```
+
+
+# Instructions
+
+
+This Lab Assignment continues to analyze data from the observational study presented in lecture that studies factors related to fractures in women with osteoporosis. You may keep the sections on **Data Background** and the **Data Key** in your submission if you wish. Perform your work in the **Assignment** section below. In this assignment, report any p-values that are less than 0.001 as **<0.001** and round values reported in your narrative text to **3** decimal places. **Be sure to clearly state the reference category when interpreting the effects of categorical variables in any regression model.** Perform all hypothesis testing at the $\alpha$ = 0.05-level.
+
+
+# Data Background
+
+In this observational study, female patients were recruited by their primary care physician after receiving a diagnosis of osteoporosis. These women were given the opportunity to enroll in a strength training program [`strength`]. After consent was obtained, baseline data were collected. Data elements collected at the first visit (at diagnosis) included quality of life (scale 0-100) [`qol`], pain assessment (10 point scale) [`pain`], a measure of physical activity [`act`], current calcium use [`cal`], age [`age`], and race [`race`]. Data on the number of healthcare utilizations (HCUs) [`hcu`] (emergency room, urgent treatment center, and hospital visits) were collected by telephone interview every 6 months. Medical records were accessed to verify information collected in the telephone interviews. Follow-up time for each participant is recorded [`period`].  A CSV file [`hcu.csv`] is provided which contains data from the women in the study.
+
+
+# Data Key – `hcu.csv`
+
+
+| Variable Name	| Definition |
+|---------------|------------|
+|`qol`      | Quality of life (QoL) index (higher: better QoL) |
+|`cal`      | Calcium use at initial visit |
+|           | &nbsp; 0 = No (reference) | 
+|           | &nbsp; 1 = Yes |
+|`race`     | Race |
+|           | &nbsp; 1 = White (reference) | 
+|           | &nbsp; 2 = Black |
+|           | &nbsp; 3 = Other |
+|`strength` | Participation in strength training program |
+|           | &nbsp; 0 = No (reference) | 
+|           | &nbsp; 1 = Yes |
+|`act`      | Activity level at initial visit |
+|           | &nbsp; 1 = None (reference) |
+|           | &nbsp; 2 = Limited/Moderate | 
+|           | &nbsp; 3 = Rigorous | 
+|`age`      | Age at initial visit (years) |
+|`pain`	    | Pain score at initial visit (higher: greater pain) |
+|`period`   | Number of years participating in study |
+|`hcu`      | Number of new health care utilizations reported |
+
+# Assignment
+
+
+**1.** <span style="color: #CC0000;">[5 points]</span> Import the CSV file `hcu.csv` in the third code chunk above. Name your data frame `hcu` and create the factor variables `cal_factor` (reference = "No"), `race_factor` (reference = "White"), `strength_factor` (reference = "No") and `act_factor` (reference = "None"). After these steps, `hcu` should contain 13 variables. [**Note:** When creating factor variables, **do not** use the `ordered=TRUE` option to create ordinal variables. No written response is required for this question. Display the code chunk(s) that perform the requested data management steps.]
+
+```{r}
+# create factor variables
+hcu <- mutate(hcu,
+              cal_factor = factor(cal,
+                                  levels = c(0, 1),
+                                  labels = c("No", "Yes")),
+              race_factor = factor(race,
+                                   levels = c(1, 2, 3),
+                                   labels = c("White", "Black", "Other")),
+              strength_factor = factor(strength,
+                                       levels = c(0, 1),
+                                       labels = c("No", "Yes")),
+              act_factor = factor(act,
+                                  levels = c(1, 2, 3),
+                                  labels = c("None", "Limited", "Rigorous")))
+```
+
+```{r}
+# check # of variables
+ncol(hcu)
+```
+
+
+**2.** The **research question** of this study is to determine if *healthcare utilization* is related to participation in the *strength training program*. We will begin our analysis with some descriptive statistics and graphical summaries. 
+
+**2a.** <span style="color: #CC0000;">[5 points]</span> Provide a graphical summary of the number of healthcare utilizations observed per patient in this study (`hcu`) and the number of years individuals participated in the study (`period`) for both the full sample and by levels of the strength training variable. Use a relative frequency barplot for `hcu` and a relative frequency histogram for `period`. Comment on what you see in the plots (overall and comparing the two groups). 
+
+```{r}
+# relative frequency barplot for hcu for the full sample
+ggplot(data = hcu,
+       aes(x = hcu, y = 100*(stat(count))/sum(stat(count)))) + 
+  geom_bar(fill = "blue", width = 0.7, alpha = 0.35) +
+  labs(title = "Relative Frequency Barplot for Number of Health Care Utilizations",
+       x = "Number of Utilizations",
+       y = "Relative Frequency (%)")
+```
+
+```{r}
+# Vertical relative frequency barplot for hcu by levels of the strength training variable
+ggplot(data = hcu,
+       aes(x = hcu, y = 100*(stat(count))/sum(stat(count)))) + 
+  geom_bar(fill = "blue", width = 0.7, alpha = 0.35) +
+  labs(title = "Relative Frequency Barplot for Number of Health Care Utilizations By Strength Training",
+       x = "Number of Utilizations",
+       y = "Relative Frequency (%)")+
+  facet_wrap(~ strength_factor, nrow = 1)
+
+```
+
+
+```{r}
+# relative frequency histogram for hcu for the full sample
+ggplot(data = hcu, aes(x = hcu)) + 
+  geom_histogram(aes(y = stat(count)/sum(stat(count))),
+                 breaks = seq(90,300,by=10),
+                 col = "black", fill = "blue", alpha = 0.35,
+                 closed = "left", na.rm = TRUE) + 
+  
+  scale_y_continuous(name = "Relative Frequency (%)",
+                     labels = scales::percent_format(),
+                     breaks = seq(0, 0.25, by=0.05)) +
+  ggtitle("Relative Frequency Histogram for Number of Health Care Utilizations") +
+  xlab("Number of Utilizations")
+
+```
+
+```{r}
+# relative frequency histogram for hcu by levels of the strength training variable
+ggplot(data = hcu, aes(x = hcu)) + 
+  geom_histogram(aes(y = stat(count)/sum(stat(count))),
+                 breaks = seq(0,300,by=20),
+                 col = "black", fill = "blue", alpha = 0.35,
+                 closed = "left", na.rm = TRUE) + 
+  
+  scale_y_continuous(name = "Relative Frequency (%)",
+                     labels = scales::percent_format(),
+                     breaks = seq(0, 0.25, by=0.05)) +
+  ggtitle("Relative Frequency Histogram for Number of Health Care Utilizations by Strength Training") +
+  xlab("Number of Utilizations")+
+  facet_grid(~ strength_factor)
+```
+
+
+Comment on what you see in the plots (overall and comparing the two groups).
+The overall pattern of counts of health care utilizations are heavily right skewed. There are a few individuals with a large observed number of utilizations. Between strength training groups, those who participated in strength training program had a **lower** counts of health care utilizations than those who not.
+
+**2b.** <span style="color: #CC0000;">[10 points]</span> Report the percentage of participants in each group that had 8, 9, 10-14, 15-19, 20-49, and 50+ HCUs. Round your percentages to 1 decimal place. Also create a relative frequency barplot that graphically displays this information. Describe any differences that you see.
+
+
+```{r}
+# create factor variable for hcu
+hcu$hcu2[hcu$hcu == 8] <- 0
+hcu$hcu2[hcu$hcu == 9] <- 1
+hcu$hcu2[(hcu$hcu >= 10) && (hcu$hcu <=14)] <- 2
+hcu$hcu2[(hcu$hcu >= 15) && (hcu$hcu <=19)] <- 3
+hcu$hcu2[(hcu$hcu >= 20) && (hcu$hcu <=49)] <- 4
+hcu$hcu2[(hcu$hcu >= 50)] <- 5
+
+hcu <- mutate(hcu,
+              hcu_factor = factor(hcu2,
+                                  levels = c(0,1,2,3,4,5),
+                                  labels = c("8", "9", "10-14","15-19","20-49","50+")))
+```
+
+```{r}
+tab <- table(hcu$hcu_factor, hcu$strength_factor, useNA = "ifany")
+
+relfreq <- round(100*prop.table(tab, margin=2), 1)
+
+relfreq
+```
+
+
+
+```{r}
+# Vertical relative frequency barplot for hcu by levels of the strength training variable
+# remove NA: data = remove_missing(hcu, na.rm = TRUE)
+ggplot(data = hcu, 
+       aes(x = hcu_factor, y = 100*(stat(count))/sum(stat(count)))) + 
+  geom_bar(fill = "blue", width = 0.7, alpha = 0.35) +
+  labs(title = "Relative Frequency Barplot for Number of Health Care Utilizations By Strength Training",
+       x = "Number of Utilizations",
+       y = "Relative Frequency (%)")+
+  facet_wrap(~ strength_factor, nrow = 1)
+```
+
+For participants in training program, `r relfreq[1,2]` had 8 HCUs, `r relfreq[2,2]` had 9 HCUs, `r relfreq[6,2]` had 50+ HCUs. For those who don't participant in training program, `r relfreq[1,1]` had 8 HCUs, `r relfreq[2,1]` had 9 HCUs, `r relfreq[6,1]` had 50+ HCUs. For both group, none of them had 10-49 HCUs. There are also many NA for both groups, `r relfreq[7,2]` for participants in training program, `r relfreq[7,1]` for those who don't parcitipate.
+
+
+
+
+**2c.** <span style="color: #CC0000;">[10 points]</span> Use the `tableby()` function in the `arsenal` package (syntax in **Lab 1**) to create a single summary table of the number of HCUs observed per patient in this study and the number of years individuals participated in the study for the full group (overall) and by levels of the strength training variable. Report the mean (SD) and the median (range) in your table to 1 decimal place. Based on the results in the table, comment on any differences in the two groups. Next, compute the mean ratio of HCUs in those who participated in strength training vs. those who did not participate and interpret the mean ratio.
+
+```{r}
+# specify statistics: mean, sd, median, range
+my_controls <- tableby.control(
+  test = F,
+  total = T,
+  numeric.stats = c("meansd","medianrange"),
+  stats.labels = list(
+    meansd = "Mean (SD)",
+    medianrange = "Median (Range)"
+  ),
+  digits = 1
+)
+
+# label variables
+my_labels <- list(
+  hcu = "Number of Utilizations",
+  period = "Period (years)",
+  strength_factor = "Participate or Not"
+)
+
+table <- tableby(strength_factor ~ hcu + period,
+                 data = hcu,
+                 control = my_controls)
+
+kable(summary(table,
+        labelTranslations = my_labels,
+        title = "Summary Statistics of HCUs and Period",
+        term.name = TRUE))
+```
+
+Those who not participate in the strength training program have a slightly larger average number of health care utilizations compared to those who participate (`r round(mean(hcu$hcu[which(hcu$strength_factor=="No")], na.rm=TRUE),1)` vs. `r round(mean(hcu$hcu[which(hcu$strength_factor=="Yes")], na.rm=TRUE),1)`)
+while the mean are the same (`r round(median(hcu$hcu[which(hcu$strength_factor=="No")], na.rm=TRUE),1)`). The mean and median of participating period in study is similar (mean: `r round(mean(hcu$period[which(hcu$strength_factor=="No")], na.rm=TRUE),1)` vs. `r round(mean(hcu$period[which(hcu$strength_factor=="Yes")], na.rm=TRUE),1)`; median: mean: `r round(median(hcu$period[which(hcu$strength_factor=="No")], na.rm=TRUE),1)` vs. `r round(median(hcu$period[which(hcu$strength_factor=="Yes")], na.rm=TRUE),1)`).
+
+```{r}
+# compute mean ratio of HCUs
+mean(hcu$hcu[which(hcu$strength_factor=="Yes")], na.rm=TRUE) / mean(hcu$hcu[which(hcu$strength_factor=="No")], na.rm=TRUE)
+```
+
+Mean ratio of HCUs in those who participated in strength training vs. those who did not participate is `r round(mean(hcu$hcu[which(hcu$strength_factor=="Yes")], na.rm=TRUE) / mean(hcu$hcu[which(hcu$strength_factor=="No")], na.rm=TRUE), 3)`.
+
+
+
+**2d.** <span style="color: #CC0000;">[6 points]</span> Compute the healthcare utilization rate in the overall sample and by levels of the strength training variable. Also compute the HCU rate ratio in those who participated in strength training vs. those who did not participate and interpret the rate ratio.
+
+```{r}
+# compute healthcare utilization rate
+bygroup.sum <- aggregate(x = list(hcu = hcu$hcu, period = hcu$period),
+                         by = list(group = hcu$strength_factor),
+                         FUN = sum,
+                         na.rm = TRUE)
+
+bygroup.rate <- cbind(bygroup.sum, rate = bygroup.sum[,2]/bygroup.sum[,3])
+
+bygroup.rate
+```
+
+Participators in the strength training program have a health care utilization rate of $\hat {\lambda_1}=$ `r round(bygroup.rate[2,4],3)` times/year, while those who don't participate have a have a health care utilization rate of $\hat {\lambda_0}=$ `r round(bygroup.rate[1,4],3)` times/year. 
+
+```{r}
+# HCU rate ratio (participate vs. not)
+lamhat1 = bygroup.rate[2,4]
+
+lamhat0 = bygroup.rate[1,4]
+
+rateratio = lamhat1 / lamhat0
+
+rateratio
+```
+
+The HCU rate ratio of in those who participated in strength training vs. those who did not participate is `r round(rateratio, 3)`, indicating that those participate in strength training program have `r round(rateratio, 3)` times the rate of healthcare utilizations compared to those who not.
+
+**3.** <span style="color: #CC0000;">[10 points]</span> **Model 1:** Fit a simple Poisson regression model of the healthcare utilization rate using participation in the strength training program. Assume the reference level specified in Question **1**. Report the equation of the fitted Poisson regression model. Interpret the estimated intercept. Report and interpret the unadjusted rate ratio associated with the strength training variable, report its 95% confidence interval and perform a hypothesis test to determine if there is a significant association between the healthcare utilization rate and participation in the strength training program. (i) State the null and alternative hypotheses; (ii) From your **R** output, report the value of the test statistic and p-value; (iii) State your statistical conclusion and your conclusion in the context of the problem.  
+
+Fit a simple Poisson regression model of the healthcare utilization rate using participation in the strength training program. 
+
+```{r}
+mod.rate1 <- glm(hcu ~ strength_factor + offset(log(period)),
+                 data = hcu,
+                 family = poisson(link = "log"))
+
+summary(mod.rate1)
+```
+
+- Report the equation of the fitted Poisson regression model.
+
+The fitted model is $\log (\hat{\lambda})=$ `r round(coef(mod.rate1)[1],3)` `r ifelse(coef(mod.rate1)[2]<0,"$-$","$+$")` `r round(abs(coef(mod.rate1)[2]),3)` Strength. 
+
+- Interpret the estimated intercept. 
+
+The estimated intercept $a=$ `r round(coef(mod.rate1)[1],3)` is equal to log-rate of healthcare utilizations in the reference group (non-participators). The exponentiated intercept $e^{a}=$ `r round(exp(coef(mod.rate1)[1]),3)` times/year is equal to the yearly rate of healthcare utilizations in those don't participate the strength training program.
+
+- Report and interpret the unadjusted rate ratio associated with the strength training variable, report its 95% confidence interval.
+
+```{r}
+# rate ratio and 95% CI
+cbind(bj = coef(mod.rate1), 
+      RR = exp(coef(mod.rate1)), 
+      exp(confint.default(mod.rate1)))
+```
+
+
+The unadjusted rate ratio is given by the exponentiated slope $e^{b}$, $\hat{RR}=e^{b}=$ `r round(exp(coef(mod.rate1)[2]),3)` [95% CI (`r round(exp(confint.default(mod.rate1)[2,1]),3)`, `r round(exp(confint.default(mod.rate1)[2,2]),3)`)], indicating that participators in strength training program had `r round(exp(coef(mod.rate1)[2]),3)` times the rate of healthcare utilizations of those who don't participate.
+
+- Perform a hypothesis test to determine if there is a significant association between the healthcare utilization rate and participation in the strength training program. 
+
+
+(i) State the null and alternative hypotheses; 
+
+$H_0: \beta = 0$ vs. $H_1:\beta \neq 0$
+
+(ii) From your **R** output, report the value of the test statistic and p-value; 
+
+The z-statistic is `r round(summary(mod.rate1)$coefficients[6],3)`, p-value `r ifelse(summary(mod.rate1)$coefficients[8]<.001,"<.001",paste("=",round(summary(mod.rate1)$coefficients[8],3)))`.
+
+(iii) State your statistical conclusion and your conclusion in the context of the problem.  
+
+We have evidence to reject $H_0$  and conclude that the rate of healthcare utilizations is significantly different in those who participate in the strength training program and those who not.
+
+
+**4.** <span style="color: #CC0000;">[7 points]</span> The **research question** would like to determine if there is an association between the *healthcare utilization rate* and participation in the *strength training program*. Given the description of the study in the introduction of this assignment, do you believe it is important to control for the other variables that were collected in these subjects (e.g., quality of life index, calcium use, race, activity level, age, and pain score) when assessing the impact of strength training program on the HCU rate? Explain. Using the `tableby()` function, create a table that summarizes these baseline variables (quality of life index, calcium use, race, activity level, age, and pain score) by participation in the strength training program. Report mean (SD) and median (range) for quantitative variables and count (%) for categorical variables to 1 decimal place. Comment on any differences that you observe.
+
+I believe it is important to control for the other variables when assessing the impact of strength training program on the HCU rate because these variables (e.g., quality of life index, calcium use, race, activity level, age, and pain score) are the potential confounders in the study so that the results may not reflect the actual association without controlling for it.
+
+```{r}
+# specify statistics: mean, sd, median, range
+my_controls <- tableby.control(
+  test = F,
+  total = T,
+  numeric.stats = c("meansd","medianrange"),
+  cat.stats = c("countrowpct"),
+  stats.labels = list(
+    meansd = "Mean (SD)",
+    medianrange = "Median (Range)",
+    countrowpct = "Count (%)"
+  ),
+  digits = 1
+)
+
+# label variables
+my_labels <- list(
+  qol = "Quality of Life Index",
+  cal_factor = "Calcium Use",
+  race_factor = "Race",
+  act_factor = "Activity Level",
+  age = "Age (years)",
+  pain = "Pain Score"
+)
+
+
+
+table <- tableby(strength_factor ~ qol + cal_factor + race_factor + act_factor + age + pain,
+                 data = hcu,
+                 control = my_controls)
+
+kable(summary(table,
+        labelTranslations = my_labels,
+        title = "Summary Statistics of Baseline Variables",
+        term.name = TRUE))
+```
+
+Except from average quality of life index is similar between participation group, average or percentage value of other baseline variables is different between participation group.
+
+
+**5.** <span style="color: #CC0000;">[5 points]</span> **Model 2:** Extend Model 1 to control for an individual's quality of life index, calcium use, race, activity level, age, and pain score at baseline. Categorical variables should use the reference levels specified in Question **1**. Using Model 2's residual deviance and residual degrees of freedom, assess if overdispersion is a problem. [Note: No interpretation of the fitted model is required]
+
+
+```{r}
+mod.rate2 <- glm(hcu ~ strength_factor + qol + cal_factor + race_factor + act_factor + age + pain + offset(log(period)),
+                 data = hcu,
+                 family = poisson(link = "log"))
+
+summary(mod.rate2)
+```
+
+- The **fitted model** is $\log (\hat{\lambda}) =$ `r round(coef(mod.rate2)[1],3)` `r ifelse(coef(mod.rate2)[2]<0,"$-$","$+$")` `r round(abs(coef(mod.rate2)[2]),3)` Strength `r ifelse(coef(mod.rate2)[3]<0,"$-$","$+$")` `r round(abs(coef(mod.rate2)[3]),3)` Quality of Life Index `r ifelse(coef(mod.rate2)[4]<0,"$-$","$+$")` `r round(abs(coef(mod.rate2)[4]),3)` Calcium Use `r ifelse(coef(mod.rate2)[5]<0,"$-$","$+$")` `r round(abs(coef(mod.rate2)[5]),3)` Black `r ifelse(coef(mod.rate2)[6]<0,"$-$","$+$")` `r round(abs(coef(mod.rate2)[6]),3)` Other `r ifelse(coef(mod.rate2)[7]<0,"$-$","$+$")` `r round(abs(coef(mod.rate2)[7]),3)` Limited `r ifelse(coef(mod.rate2)[8]<0,"$-$","$+$")` `r round(abs(coef(mod.rate2)[8]),3)` Rigorous  `r ifelse(coef(mod.rate2)[9]<0,"$-$","$+$")` `r round(abs(coef(mod.rate2)[9]),3)` Age `r ifelse(coef(mod.rate2)[10]<0,"$-$","$+$")` `r round(abs(coef(mod.rate2)[10]),3)` Pain. 
+
+
+- Check overdispersion
+
+```{r}
+# check overdispersion
+deviance(mod.rate2)/mod.rate2$df.residual
+```
+
+In the multiple Poisson regression model, the residual deviance is equal to `r format(round(deviance(mod.rate2),0), scientific=F)` and the residual degrees of freedom is equal to `r mod.rate2$df.residual`. Their ratio, `r round(deviance(mod.rate2)/mod.rate2$df.residual,3)` is much larger than 1, indicating that overdispersion is a problem in these data. 
+
+
+**6.** **Model 3:** Re-fit Model 2 using a negative binomial regression model. 
+
+```{r}
+mod.NBrate <- glm.nb(hcu ~ strength_factor + qol + cal_factor + race_factor + act_factor + age + pain + offset(log(period)),
+                 data = hcu)
+
+summary(mod.NBrate)
+```
+
+```{r}
+# Rate ratio and 95% CI
+cbind(bj = coef(mod.NBrate), 
+      RR = exp(coef(mod.NBrate)),
+      exp(confint.default(mod.NBrate)))
+
+```
+
+
+**6a.** <span style="color: #CC0000;">[7 points]</span> Using Model 3, report and interpret the rate ratio associated with the strength training variable, report its 95% confidence interval and perform a hypothesis test to determine if there is a significant association between the healthcare utilization rate and participation in the strength training program. (i) State the null and alternative hypotheses; (ii) From your **R** output, report the value of the test statistic and p-value; (iii) State your statistical conclusion and your conclusion in the context of the problem. 
+
+- Report and interpret the rate ratio associated with the strength training variable, report its 95% confidence interval.
+
+
+The adjusted rate ratio associated with the strength training variable is $\hat {RR}=e^{b_1}=$ `r round(coef(mod.NBrate)[2], 3)` [95% CI (`r round(exp(confint.default(mod.NBrate)[2,1]),3)`, `r round(exp(confint.default(mod.NBrate)[2,2]),3)`)], indicating the rate of healthcare utilizations in those who participate in the strength training program is `r round(coef(mod.NBrate)[2], 3)` times compared to those who don't.
+
+
+- Perform a hypothesis test to determine if there is a significant association between the healthcare utilization rate and participation in the strength training program. 
+
+
+(i) State the null and alternative hypotheses; 
+
+$H_0: \beta_1 = 0$ vs. $H_1:\beta_1 \neq 0$
+
+(ii) From your **R** output, report the value of the test statistic and p-value; 
+
+The z-statistic is `r round(summary(mod.NBrate)$coefficients[6],3)`, p-value `r ifelse(summary(mod.NBrate)$coefficients[8]<.001,"<.001",paste("=",round(summary(mod.NBrate)$coefficients[8],3)))`.
+
+(iii) State your statistical conclusion and your conclusion in the context of the problem.  
+
+We fail to reject $H_0$ and conclude that the rate of healthcare utilizations is not significantly different in those who participate in the strength training program and those who not.
+
+
+
+**6b.** <span style="color: #CC0000;">[5 points]</span> Notice that there are some parameters (slopes) that were found to be statistically significant in Model 2, but are no longer statistically significant in Model 3. For which parameters does this occur? What is the reason for this loss of statistical significance? 
+
+These params are: quality of life index, other race. Because standard errors of params from the negative binomial model are **larger** than those in the Poisson model, as a result, the individual Wald test p-values are **larger** in the negative binomial model, we are more harder to reject $H_0$.
+
+**7.** Our goal is to now refine Model 3 to give a parsimonious model that will be used to identify the factors that are independently associated with the healthcare utilization rate in this population of women.
+
+**7a.** <span style="color: #CC0000;">[10 points]</span> Begin by removing the variable from Model 3 with the largest p-value and re-fit the model. You may use either a Wald test or likelihood ratio test to assess statistical significance of binary and quantitative predictors but should use a likelihood ratio test to assess overall statistical significance of categorical predictors made up of >2 levels. [Note: Statistical decisions involving categorical variables with >2 levels should be based on the result of the likelihood ratio test.] Repeat this process, removing one variable at a time, until there are only statistically significant predictors (at the $\alpha$ = 0.05-level) remaining in the model. At each stage, clearly state which variable is being dropped and why. Report the equation of the final fitted negative binomial regression model. 
+
+- Step 1
+
+```{r}
+Anova(mod.NBrate)
+```
+
+The variable race has largest p-value (`r round(Anova(mod.NBrate)$"Pr(>Chisq)"[4],3)`), which means the overall effect of race is not statistically significant in the presence of the other variables in this negative binomial model, so we can remove it from the full model.
+
+
+- Step 2
+```{r}
+# negative binomial regression model after romving race factor
+mod.NBrate2 <- glm.nb(hcu ~ strength_factor + qol + cal_factor + act_factor + age + pain + offset(log(period)),
+                 data = hcu)
+
+Anova(mod.NBrate2)
+```
+
+
+The variable pain has largest p-value (`r round(Anova(mod.NBrate2)$"Pr(>Chisq)"[6],3)`), which means the overall effect of pain score is not statistically significant in the presence of the other variables in this negative binomial model, so we can remove it from the second model.
+
+- Step 3
+```{r}
+# negative binomial regression model after romving race factor and pain
+mod.NBrate3 <- glm.nb(hcu ~ strength_factor + qol + cal_factor + act_factor + age + offset(log(period)),
+                 data = hcu)
+
+Anova(mod.NBrate3)
+```
+
+The variable quality of life index has largest p-value (`r round(Anova(mod.NBrate3)$"Pr(>Chisq)"[2],3)`), which means the overall effect of quality of life index is not statistically significant in the presence of the other variables in this negative binomial model, so we can remove it from the third model.
+
+- Step 4
+```{r}
+# negative binomial regression model after romving race factor, pain and quality of life index
+mod.NBrate4 <- glm.nb(hcu ~ strength_factor + cal_factor + act_factor + age + offset(log(period)),
+                 data = hcu)
+
+Anova(mod.NBrate4)
+```
+
+The variable strength has largest p-value (`r round(Anova(mod.NBrate4)$"Pr(>Chisq)"[1],3)`), which means the overall effect of strength training program is not statistically significant in the presence of the other variables in this negative binomial model, so we can remove it from the fourth model.
+
+- Step 5
+```{r}
+# negative binomial regression model after romving race factor, painm quality of life index and strength 
+mod.NBrate5 <- glm.nb(hcu ~ cal_factor + act_factor + age + offset(log(period)),
+                 data = hcu)
+
+Anova(mod.NBrate5)
+```
+
+Now all the predictors in this model are statistically significant. 
+
+```{r}
+summary(mod.NBrate5)
+```
+
+
+The equation of the final fitted negative binomial regression model is $\log (\hat{\lambda}) =$ `r round(coef(mod.NBrate5)[1],3)` `r ifelse(coef(mod.NBrate5)[2]<0,"$-$","$+$")` `r round(abs(coef(mod.NBrate5)[2]),3)` Calcium Use `r ifelse(coef(mod.NBrate5)[3]<0,"$-$","$+$")` `r round(abs(coef(mod.NBrate5)[3]),3)` Limited Activity `r ifelse(coef(mod.NBrate5)[4]<0,"$-$","$+$")` `r round(abs(coef(mod.NBrate5)[4]),3)` Rigorous Activity `r ifelse(coef(mod.NBrate5)[5]<0,"$-$","$+$")` `r round(abs(coef(mod.NBrate5)[5]),3)` Age.
+
+
+**7b.** <span style="color: #CC0000;">[10 points]</span> Using your final model from Question **7a**, interpret each rate ratio and report the 95% confidence interval for each rate ratio. Perform a hypothesis test of each slope parameter. (i) State the null and alternative hypotheses; (ii) From your **R** output, report the value of the test statistic and p-value; (iii) State your statistical conclusion and your conclusion in the context of the problem. 
+
+
+- Controlling for all the other variables in the model, the rate of healthcare utilizations in those who **use calcium** is `r round(100*(exp(coef(mod.NBrate5)[2])-1),1)`% lower than those who don't (ref); adjusted $\hat{RR}= e^{b_1} =$ `r round(exp(coef(mod.NBrate5)[2]),3)` [95% CI (`r round(exp(confint.default(mod.NBrate5)[2,1]),3)`, `r round(exp(confint.default(mod.NBrate5)[2,2]),3)`)].
+
+Perform a hypothesis test.
+
+(i) State the null and alternative hypotheses; 
+
+$H_0: \beta_1 = 0$ vs. $H_1:\beta_1 \neq 0$
+
+(ii) From your **R** output, report the value of the test statistic and p-value; 
+
+The z-statistic is `r round(summary(mod.NBrate5)$coefficients[12],3)`, p-value `r ifelse(summary(mod.NBrate5)$coefficients[17]<.001,"<.001",paste("=",round(summary(mod.NBrate5)$coefficients[17],3)))`.
+
+(iii) State your statistical conclusion and your conclusion in the context of the problem.  
+
+We have evidence to reject $H_0$  and conclude that the rate of healthcare utilizations is significantly different in those who use calcium in the strength training program and those who not.
+
+
+- Controlling for all the other variables in the model, the rate of healthcare utilizations in those who with **limited** level of activity is `r round(100*(exp(coef(mod.NBrate5)[3])-1),1)`% lower than those who with None level of activity (ref); adjusted $\hat{RR}= e^{b_2} =$ `r round(exp(coef(mod.NBrate5)[3]),3)` [95% CI (`r round(exp(confint.default(mod.NBrate5)[3,1]),3)`, `r round(exp(confint.default(mod.NBrate5)[3,2]),3)`)].
+
+Perform a hypothesis test.
+
+(i) State the null and alternative hypotheses; 
+
+$H_0: \beta_2 = 0$ vs. $H_1:\beta_2 \neq 0$
+
+(ii) From your **R** output, report the value of the test statistic and p-value; 
+
+The z-statistic is `r round(summary(mod.NBrate5)$coefficients[13],3)`, p-value `r ifelse(summary(mod.NBrate5)$coefficients[18]<.001,"<.001",paste("=",round(summary(mod.NBrate5)$coefficients[18],3)))`.
+
+(iii) State your statistical conclusion and your conclusion in the context of the problem.  
+
+We have evidence to reject $H_0$  and conclude that the rate of healthcare utilizations is significantly different in those who with limited level of activity and who with limited level of activity.
+
+
+- Controlling for all the other variables in the model, the rate of healthcare utilizations in those who with **rigorous** level of activity is `r round(100*(exp(coef(mod.NBrate5)[4])-1),1)`% lower than those who with None level of activity (ref); adjusted $\hat{RR}= e^{b_3} =$ `r round(exp(coef(mod.NBrate5)[4]),3)` [95% CI (`r round(exp(confint.default(mod.NBrate5)[4,1]),3)`, `r round(exp(confint.default(mod.NBrate5)[4,2]),3)`)].
+
+Perform a hypothesis test.
+
+(i) State the null and alternative hypotheses; 
+
+$H_0: \beta_3 = 0$ vs. $H_1:\beta_3 \neq 0$
+
+(ii) From your **R** output, report the value of the test statistic and p-value; 
+
+The z-statistic is `r round(summary(mod.NBrate5)$coefficients[14],3)`, p-value `r ifelse(summary(mod.NBrate5)$coefficients[19]<.001,"<.001",paste("=",round(summary(mod.NBrate5)$coefficients[19],3)))`.
+
+(iii) State your statistical conclusion and your conclusion in the context of the problem.  
+
+We have evidence to reject $H_0$  and conclude that the rate of healthcare utilizations is significantly different in those who with rigorous level of activity and who with limited level of activity.
+
+
+- Controlling for all the other variables in the model, as **age** increases, the rate of healthcare utilizations increases. A 1-year increase in age increases the rate of healthcare utilizations by `r round(100*(exp(coef(mod.NBrate5)[5])-1),1)`%; adjusted $\hat{RR}= e^{b_4} =$ `r round(exp(coef(mod.NBrate5)[5]),3)` [95% CI (`r round(exp(confint.default(mod.NBrate5)[5,1]),3)`, `r round(exp(confint.default(mod.NBrate5)[5,2]),3)`)].
+
+
+Perform a hypothesis test.
+
+(i) State the null and alternative hypotheses; 
+
+$H_0: \beta_4 = 0$ vs. $H_1:\beta_4 \neq 0$
+
+(ii) From your **R** output, report the value of the test statistic and p-value; 
+
+The z-statistic is `r round(summary(mod.NBrate5)$coefficients[15],3)`, p-value `r ifelse(summary(mod.NBrate5)$coefficients[20]<.001,"<.001",paste("=",round(summary(mod.NBrate5)$coefficients[20],3)))`.
+
+(iii) State your statistical conclusion and your conclusion in the context of the problem.  
+
+We have evidence to reject $H_0$  and conclude that there is a siginificant linear relationship between the rate of healthcare utilizations and age.
+
+**7c.** <span style="color: #CC0000;">[7 points]</span> Using your final model from Question **7a**, estimate the yearly healthcare utilization rate for all combinations of factor levels included in your final model. When specifying your `newdata` data frame for use in the `predict()` function, set the value of any quantitative variables included in your final model at their mean value. For example, if your final model includes *quality of life*, *calcium use* and *race*, predict the HCU rate when (1) *quality of life* = 44.679, *race* = White, and *calcium use* = No; (2) *quality of life* = 44.679, *race* = Black, and *calcium use* = No; (3) *quality of life* = 44.679, *race* = Other, and *calcium use* = No; (4) *quality of life* = 44.679, *race* = White, and *calcium use* = Yes; (5) *quality of life* = 44.679, *race* = Black, and *calcium use* = Yes; (6) *quality of life* = 44.679, *race* = Other, and *calcium use* = Yes. As your answer to this question, create a simple table that reports the fitted annual rates and their corresponding $x$ values. What are the values of $x$ in your table from  that have the lowest estimated annual healthcare utilization rate? Do the trends that you observe in the annual rates agree with the direction of the rate ratios associated with the categorical predictors in your model? Explain. For example, holding *quality of life* and *calcium use* constant, do the fitted HCU rates in whites, blacks, and others follow the trends that you observed in the rate ratios? 
+
+
+```{r}
+# new data frame includes all possible combinations of x for prediction
+pred.x <- data.frame(cal_factor = c("No", "No","No","Yes", "Yes", "Yes"), act_factor = c("None", "Limited", "Rigorous","None", "Limited", "Rigorous"), age = c(58.6, 58.6, 58.6, 58.6, 58.6, 58.6), period = c(7.0, 7.0, 7.0,7.0, 7.0,7.0))
+
+# fitted value
+lambdahat <- predict(mod.NBrate5, newdata = pred.x, type = "response")
+
+table = cbind(fitted = lambdahat, pred.x)
+
+table
+```
+
+Calcium use = Yes, activity level = Rigorous, age = 58.6 has the lowest healthcare utilization rate (`r round(lambdahat[6],3)` times/year). The trends that I observed in the annual rates agree with the direction of rate ratios associated with categorical predictors (calcium use and activity level) in my model. Holding activity level constant, fitted HCU rates in those who use calcium is lower than those who not (ref). Holding calcium use constant, fitted HCU rates in activity level group is: rigorous < limited < none (ref). 
+
+**7d.** <span style="color: #CC0000;">[3 points]</span> If you were to increase the values of any quantitative predictors in your model while holding the categorical variables fixed/constant, would you expect the fitted rates to increase or decrease? Why?
+
+The quantitative predictor in my model is **age**, I expect the fitted rates to increase because the coefficient of age is positive (`r round(coef(mod.NBrate5)[5],3)`), which means as **age** increases, the rate of healthcare utilizations increases.
+

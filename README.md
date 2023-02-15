@@ -1,2 +1,15 @@
 # BIS 505 Biostatistics in Public Health 
-coding language: R
+
+- Exploratory/descriptive analysis
+
+- ANOVA
+
+- Simple/multiple linear regression
+
+- Logistic regression
+
+- Poisson regression
+
+- Survival analysis
+
+- repeated measures analysis

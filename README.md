@@ -2,6 +2,8 @@
 
 - Exploratory/descriptive analysis
 
+- Inferential analysis
+
 - ANOVA
 
 - Simple/multiple linear regression
@@ -12,4 +14,4 @@
 
 - Survival analysis
 
-- repeated measures analysis
+- Longitudinal analysis
